@@ -25,7 +25,7 @@ typedef struct {
   int capacity;
 } Map;
 
-static char* THEME = "outline";
+static char* THEME = "default";
 
 static int img_used_width;
 static Map backgroundMap;
