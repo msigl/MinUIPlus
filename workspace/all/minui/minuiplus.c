@@ -25,6 +25,7 @@ typedef struct {
   int capacity;
 } Map;
 
+static char* THEME = "outline";
 
 static int img_used_width;
 static Map backgroundMap;
@@ -83,9 +84,9 @@ static void freeMap(Map* map) {
 
 static SDL_Surface* loadBackgroundImage(char* name, SDL_Surface* screen) {
   char imagePath[MAX_PATH];
-  sprintf(imagePath, "%s/res/theme/%s.png", ROOT_SYSTEM_PATH, name);
+  sprintf(imagePath, "%s/res/theme/%s/%s.png", ROOT_SYSTEM_PATH, THEME, name);
   if(!exists(imagePath)) {
-    sprintf(imagePath, "%s/res/theme/%s.png", ROOT_SYSTEM_PATH, "_default");
+    sprintf(imagePath, "%s/res/theme/%s/%s.png", ROOT_SYSTEM_PATH, THEME, "_default");
   }
   SDL_Surface* image = IMG_Load(imagePath);
   SDL_Surface* optimizedImage = SDL_ConvertSurface(image, screen->format, 0);
