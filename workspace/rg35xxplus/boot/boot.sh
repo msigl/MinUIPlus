@@ -90,7 +90,7 @@ if [ -f $UPDATE_PATH ]; then
 	echo 0,0 > /sys/class/graphics/fb0/pan
 
 	# install bootlogo.bmp
-	if [ $ACTION = "installing" ] || [ ! -f $FLAG_PATH ]; then
+	if [ $ACTION = "installing" ] || [ $ACTION = "updating" ] || [ ! -f $FLAG_PATH ]; then
 		echo "replace bootlogo" >> $TF1_PATH/log.txt
 		touch $FLAG_PATH
 		BOOT_DEVICE=/dev/mmcblk0p2

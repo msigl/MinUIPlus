@@ -10,14 +10,10 @@
 #include "defines.h"
 #include "api.h"
 #include "utils.h"
+#include "minuiplus.h"
 
 ///////////////////////////////////////
 
-typedef struct Array {
-	int count;
-	int capacity;
-	void** items;
-} Array;
 
 static Array* Array_new(void) {
 	Array* self = malloc(sizeof(Array));
@@ -107,13 +103,6 @@ enum EntryType {
 	ENTRY_PAK,
 	ENTRY_ROM,
 };
-typedef struct Entry {
-	char* path;
-	char* name;
-	char* unique;
-	int type;
-	int alpha; // index in parent Directory's alphas Array, which points to the index of an Entry in its entries Array :sweat_smile:
-} Entry;
 
 static Entry* Entry_new(char* path, int type) {
 	char display_name[256];
@@ -158,11 +147,6 @@ static void EntryArray_free(Array* self) {
 
 ///////////////////////////////////////
 
-#define INT_ARRAY_MAX 27
-typedef struct IntArray {
-	int count;
-	int items[INT_ARRAY_MAX];
-} IntArray;
 static IntArray* IntArray_new(void) {
 	IntArray* self = malloc(sizeof(IntArray));
 	self->count = 0;
@@ -177,17 +161,6 @@ static void IntArray_free(IntArray* self) {
 }
 
 ///////////////////////////////////////
-
-typedef struct Directory {
-	char* path;
-	char* name;
-	Array* entries;
-	IntArray* alphas;
-	// rendering
-	int selected;
-	int start;
-	int end;
-} Directory;
 
 static int getIndexChar(char* str) {
 	char i = 0;
@@ -652,10 +625,10 @@ static Array* getRoot(void) {
 		Array* emus = Array_new();
 		while((dp = readdir(dh)) != NULL) {
 			if (hide(dp->d_name)) continue;
-			if (hasRoms(dp->d_name)) {
+			//if (hasRoms(dp->d_name)) { // TODO MSI
 				strcpy(tmp, dp->d_name);
 				Array_push(emus, Entry_new(full_path, ENTRY_DIR));
-			}
+			//}
 		}
 		EntryArray_sort(emus);
 		Entry* prev_entry = NULL;
@@ -1333,6 +1306,9 @@ int main (int argc, char *argv[]) {
 	int show_version = 0;
 	int show_setting = 0; // 1=brightness,2=volume
 	int was_online = PLAT_isOnline();
+
+	MinUIPlus_initialize(top, stack, screen);
+
 	
 	// LOG_info("- loop start: %lu\n", SDL_GetTicks() - main_begin);
 	while (!quit) {
@@ -1343,6 +1319,12 @@ int main (int argc, char *argv[]) {
 			
 		int selected = top->selected;
 		int total = top->entries->count;
+
+		int BTN_UP = MinUIPlus_getBtnUp();
+		int BTN_DOWN = MinUIPlus_getBtnDown();
+		int BTN_LEFT = MinUIPlus_getBtnLeft();
+		int BTN_RIGHT = MinUIPlus_getBtnRight();
+
 		
 		PWR_update(&dirty, &show_setting, NULL, NULL);
 		
@@ -1517,7 +1499,9 @@ int main (int argc, char *argv[]) {
 					SDL_FreeSurface(thumb);
 				}
 			}
-			
+
+			MinUIPlus_renderLauncher(show_version);
+
 			int ow = GFX_blitHardwareGroup(screen, show_setting);
 			
 			if (show_version) {
@@ -1587,6 +1571,7 @@ int main (int argc, char *argv[]) {
 			else {
 				// list
 				if (total>0) {
+					if(MinUIPlus_shouldRenderMenu()) {
 					int selected_row = top->selected - top->start;
 					for (int i=top->start,j=0; i<top->end; i++,j++) {
 						Entry* entry = top->entries->items[i];
@@ -1640,6 +1625,7 @@ int main (int argc, char *argv[]) {
 							SCALE1(PADDING+(j*PILL_SIZE)+4)
 						});
 						SDL_FreeSurface(text);
+					}
 					}
 				}
 				else {
@@ -1696,6 +1682,7 @@ int main (int argc, char *argv[]) {
 	}
 	
 	if (version) SDL_FreeSurface(version);
+	MinUIPlus_shutdown();
 
 	Menu_quit();
 	PWR_quit();
