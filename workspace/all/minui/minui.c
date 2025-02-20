@@ -1660,6 +1660,9 @@ int main (int argc, char *argv[]) {
 			dirty = 0;
 		}
 		else GFX_sync();
+
+
+		dirty = MinUIPlus_getDirty();
 		
 		// if (!first_draw) {
 		// 	first_draw = SDL_GetTicks();

@@ -48,6 +48,7 @@ void MinUIPlus_initialize(Directory* top, Array* stack, SDL_Surface* screen);
 void MinUIPlus_shutdown();
 void MinUIPlus_renderLauncher(int show_version);
 bool MinUIPlus_shouldRenderMenu();
+int MinUIPlus_getDirty();
 int MinUIPlus_getBtnUp();
 int MinUIPlus_getBtnDown();
 int MinUIPlus_getBtnLeft();
