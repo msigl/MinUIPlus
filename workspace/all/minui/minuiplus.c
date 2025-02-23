@@ -1,4 +1,5 @@
 // find . -name "*.png" | xargs -L1 -I{} convert -scale x721 "{}" x720/"{}" // can be used to convert pngs into a different size
+// find . -name "*.png" | xargs -L1 -I{} convert -monochrome -write "{}" ./"{}" // can be used to convert pngs to black and white
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +28,16 @@ typedef struct {
   int capacity;
 } Map;
 
-static char *THEMES[] = { "default", "outline" };
+// TODO
+/*static char* FOLDER_MAP_THEME = { "auto-favorites", "auto-lastplayed", "gb", "gbc", "gba", "nes", 
+                                  "md", "psx", "snes", "ngp", "ngpc", "pico8", 
+                                  "gamegear", "mastersystem", "", "tg16", "virtualboy" };
+static char* FOLDER_MAP_MINUI = { "Favourites", "Recently Played", "Game Boy Advance", "Game Boy Color", "Game Boy", "Nintendo Entertainment System",
+                                  "Sega Genesis", "Sony PlayStation", "Super Nintendo Entertainment System", "Neo Geo Pocket", "Neo Geo Pocket Color", "Pico-8",
+                                  "Sega Game Gear", "Sega Master System", "Super Game Boy", "TurboGrafx-16", "Virtual Boy" };
+static char* FALLBACK_NAME = "_default";*/
+
+static char* THEMES[] = { "default", "outline", "MinUI" }; // MinUI needs to be last
 static int THEME_INDEX = 0;
 static char* THEME;
 
@@ -40,6 +50,9 @@ static Array* stackRef;
 static Directory* topRef;
 static SDL_Surface* screenRef;
 
+static bool isMinUIThemeActive() {
+  return strcmp(THEME, "MinUI") == 0;
+}
 
 static void initializeMap(Map* map, int initialCapacity) {
   map->size = 0;
@@ -86,6 +99,65 @@ static void freeMap(Map* map) {
   free(map->entries);
 }
 
+// Helper function to get a pixel from an SDL_Surface at (x, y)
+static Uint32 getpixel(SDL_Surface* surface, int x, int y) {
+    int bpp = surface->format->BytesPerPixel;
+    Uint8* p = (Uint8*)surface->pixels + y * surface->pitch + x * bpp;
+    switch(bpp) {
+        case 1:
+            return *p;
+        case 2:
+            return *(Uint16 *)p;
+        case 3:
+            if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+                return p[0] << 16 | p[1] << 8 | p[2];
+            else
+                return p[0] | p[1] << 8 | p[2] << 16;
+        case 4:
+            return *(Uint32 *)p;
+        default:
+            return 0;  // Should not happen.
+    }
+}
+
+// Function that counts transparent pixels (alpha == 0) in the last row of a surface.
+static int countTransparentPixelsInFirstRow(SDL_Surface* surface) {
+    if (!surface)
+        return 0;
+    
+    int transparentCount = 0;
+    int y = 0; // first row, last row would be surface->h - 1
+
+    // Lock the surface if needed.
+    if (SDL_MUSTLOCK(surface)) {
+        if (SDL_LockSurface(surface) < 0) {
+            SDL_Log("Couldn't lock surface: %s", SDL_GetError());
+            return 0;
+        }
+    }
+
+    for (int x = 0; x < surface->w; x++) {
+        Uint32 pixel = getpixel(surface, x, y);
+        Uint8 r, g, b, a;
+        SDL_GetRGBA(pixel, surface->format, &r, &g, &b, &a);
+        if(a == 0) {  // Fully transparent
+            transparentCount++;
+        }
+    }
+
+    if (SDL_MUSTLOCK(surface)) {
+        SDL_UnlockSurface(surface);
+    }
+    
+    return transparentCount;
+}
+
+static int calculateImageUsedWidth(SDL_Surface* image) {
+  int width = image->w - countTransparentPixelsInFirstRow(image);
+  width += (int)(((float)width) / 100) * 5; // + 5% of image width as spacer between images
+  return width;
+}
+
 static SDL_Surface* loadBackgroundImage(char* theme, char* name, SDL_Surface* screen) {
   char imagePath[MAX_PATH];
   bool resizeNeeded = true;
@@ -101,19 +173,18 @@ static SDL_Surface* loadBackgroundImage(char* theme, char* name, SDL_Surface* sc
 
   SDL_Surface* image = IMG_Load(imagePath);
   if(!resizeNeeded) {
-    img_used_width = 155; // TODO: calculate based on angles? count (none) transparent pixels?
+    img_used_width = calculateImageUsedWidth(image);
     return image;
   }
   
   int destHeight = screen->h;
   float scale = destHeight / (float) image->h;
   int destWidth = image->w * scale;
-  int usedWidthPerImage = destWidth - (100 * scale); // see TODO above
-  img_used_width = usedWidthPerImage;
   SDL_Surface* preScaled = SDL_CreateRGBSurfaceWithFormat(0, destWidth, destHeight, 32, SDL_PIXELFORMAT_RGBA32);
   SDL_SetSurfaceBlendMode(preScaled, SDL_BLENDMODE_BLEND);
   SDL_Rect destRect = { 0, 0, destWidth, destHeight };
   SDL_BlitScaled(image, NULL, preScaled, &destRect);
+  img_used_width = calculateImageUsedWidth(preScaled);
   SDL_FreeSurface(image);
   return preScaled;
 }
@@ -175,7 +246,7 @@ void MinUIPlus_initialize(Directory* top, Array* stack, SDL_Surface* screen) {
   for (int i=0; i<top->entries->count; i++) {
     Entry* entry = top->entries->items[i];
     size_t length = sizeof(THEMES) / sizeof(THEMES[0]);
-    for (int j = 0; j < length; j++) {
+    for (int j = 0; j < length - 1; j++) { // -1 because we don't want the last array entry (= minui default theme)
       char* themedName = getThemedName(THEMES[j], entry->name);
       putMapEntry(&backgroundMap, themedName, loadBackgroundImage(THEMES[j], entry->name, screen));
       putMapEntry(&darkBackgroundMap, themedName, loadDarkenedBackgroundImage(THEMES[j], entry->name, screen));
@@ -194,7 +265,7 @@ void MinUIPlus_shutdown() {
 }
 
 void MinUIPlus_renderLauncher(int show_version) {
-  if (show_version || stackRef->count > 1 || !topRef || topRef->entries->count < 1) {
+  if (show_version || stackRef->count > 1 || !topRef || topRef->entries->count < 1 || isMinUIThemeActive()) {
     return;
   }
 
@@ -207,7 +278,7 @@ void MinUIPlus_renderLauncher(int show_version) {
   SDL_Rect destRect = { offsetX, 0, image->w, screenRef->h };
   SDL_BlitSurface(image, NULL, screenRef, &destRect);
 
-  int numberOfImagesOnEachSideOfCenter = ceil(((float)screenRef->w/2) / (float)img_used_width) - 1;
+  int numberOfImagesOnEachSideOfCenter = ceil(((float)screenRef->w/2) / (float)img_used_width);
   int helperIndexRightSide = topRef->selected + 1;
   int helperIndexLeftSide = topRef->selected - 1;
 
@@ -245,7 +316,11 @@ void MinUIPlus_renderLauncher(int show_version) {
   // draw logo of selected entry
   SDL_Surface* logo = getMapEntry(&logoMap, getThemedName(THEME, entry->name));
   if(logo) {
-    SDL_Rect destRect = { screenRef->w / 2 - logo->w / 2, screenRef->h / 2 - logo->h / 2, logo->w, logo->h };
+    int heightFactor = 2;
+    if(strcmp(THEME, "outline") == 0) {
+      heightFactor = 3;
+    }
+    SDL_Rect destRect = { screenRef->w / 2 - logo->w / 2, screenRef->h / heightFactor - logo->h / 2, logo->w, logo->h };
     SDL_BlitSurface(logo, NULL, screenRef, &destRect);
   } else {
     GFX_blitMessage(font.large, entry->name, screenRef, &(SDL_Rect){0,0,screenRef->w,screenRef->h});
@@ -253,32 +328,32 @@ void MinUIPlus_renderLauncher(int show_version) {
 }
 
 bool MinUIPlus_shouldRenderMenu() {
-  return stackRef->count > 1;
+  return stackRef->count > 1 || isMinUIThemeActive();
 }
 
 int MinUIPlus_getBtnUp() {
-  if(stackRef->count < 2) {
+  if(stackRef->count < 2 && !isMinUIThemeActive()) {
     return BTN_LEFT;
   }
   return BTN_UP;
 }
 
 int MinUIPlus_getBtnDown() {
-  if(stackRef->count < 2) {
+  if(stackRef->count < 2 && !isMinUIThemeActive()) {
     return BTN_RIGHT;
   }
   return BTN_DOWN;
 }
 
 int MinUIPlus_getBtnLeft() {
-  if(stackRef->count < 2) {
+  if(stackRef->count < 2 && !isMinUIThemeActive()) {
     return BTN_UP;
   }
   return BTN_LEFT;
 }
 
 int MinUIPlus_getBtnRight() {
-  if(stackRef->count < 2) {
+  if(stackRef->count < 2 && !isMinUIThemeActive()) {
     return BTN_DOWN;
   }
   return BTN_RIGHT;
