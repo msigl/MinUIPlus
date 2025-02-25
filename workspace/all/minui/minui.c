@@ -1307,7 +1307,7 @@ int main (int argc, char *argv[]) {
 	int show_setting = 0; // 1=brightness,2=volume
 	int was_online = PLAT_isOnline();
 
-	MinUIPlus_initialize(top, stack, screen);
+	MinUIPlus_initialize(stack, screen);
 
 	
 	// LOG_info("- loop start: %lu\n", SDL_GetTicks() - main_begin);

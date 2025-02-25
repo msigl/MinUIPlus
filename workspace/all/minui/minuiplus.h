@@ -44,7 +44,7 @@ typedef struct Entry {
   int alpha; // index in parent Directory's alphas Array, which points to the index of an Entry in its entries Array :sweat_smile:
 } Entry;
 
-void MinUIPlus_initialize(Directory* top, Array* stack, SDL_Surface* screen);
+void MinUIPlus_initialize(Array* stack, SDL_Surface* screen);
 void MinUIPlus_shutdown();
 void MinUIPlus_renderLauncher(int show_version);
 bool MinUIPlus_shouldRenderMenu();

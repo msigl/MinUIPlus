@@ -1,5 +1,6 @@
 // find . -name "*.png" | xargs -L1 -I{} convert -scale x721 "{}" x720/"{}" // can be used to convert pngs into a different size
 // find . -name "*.png" | xargs -L1 -I{} convert -monochrome -write "{}" ./"{}" // can be used to convert pngs to black and white
+// find . -type f -name "*.cfg" -exec dos2unix {} \+; // to convert from crlf to lf, was needed for *.sh and *.cfg after cloning repo with windows ...
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -131,7 +132,7 @@ static int countTransparentPixelsInFirstRow(SDL_Surface* surface) {
     // Lock the surface if needed.
     if (SDL_MUSTLOCK(surface)) {
         if (SDL_LockSurface(surface) < 0) {
-            SDL_Log("Couldn't lock surface: %s", SDL_GetError());
+            //SDL_Log("Couldn't lock surface: %s", SDL_GetError());
             return 0;
         }
     }
@@ -232,10 +233,12 @@ static char* getThemedName(char* theme, char* name) {
   return themedName;
 }
 
-void MinUIPlus_initialize(Directory* top, Array* stack, SDL_Surface* screen) {
-  topRef = top;
+void MinUIPlus_initialize(Array* stack, SDL_Surface* screen) {
+  topRef = stack->items[0];
   screenRef = screen;
   stackRef = stack;
+
+  LOG_info("MinUIPlus_initialize / begin:  %s, %s\n", topRef->path, topRef->name);
 
   THEME = THEMES[THEME_INDEX];
 
@@ -243,8 +246,8 @@ void MinUIPlus_initialize(Directory* top, Array* stack, SDL_Surface* screen) {
   initializeMap(&darkBackgroundMap, 50);
   initializeMap(&logoMap, 50);
 
-  for (int i=0; i<top->entries->count; i++) {
-    Entry* entry = top->entries->items[i];
+  for (int i=0; i<topRef->entries->count; i++) {
+    Entry* entry = topRef->entries->items[i];
     size_t length = sizeof(THEMES) / sizeof(THEMES[0]);
     for (int j = 0; j < length - 1; j++) { // -1 because we don't want the last array entry (= minui default theme)
       char* themedName = getThemedName(THEMES[j], entry->name);
@@ -254,14 +257,16 @@ void MinUIPlus_initialize(Directory* top, Array* stack, SDL_Surface* screen) {
       free(themedName);
     }    
   }
+
+  LOG_info("MinUIPlus_initialize / end\n");
 }
 
 void MinUIPlus_shutdown() {
+  LOG_info("MinUIPlus_shutdown\n");
   freeMap(&backgroundMap);
   freeMap(&darkBackgroundMap);
   freeMap(&logoMap);
   free(THEME);
-  free(THEMES);
 }
 
 void MinUIPlus_renderLauncher(int show_version) {
