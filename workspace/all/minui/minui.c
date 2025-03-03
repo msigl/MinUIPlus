@@ -186,7 +186,7 @@ static void getUniqueName(Entry* entry, char* out_name) {
 
 static void Directory_index(Directory* self) {
 	int is_collection = prefixMatch(COLLECTIONS_PATH, self->path);
-	int skip_index = exactMatch(FAUX_RECENT_PATH, self->path) || is_collection; // not alphabetized
+	int skip_index = exactMatch(FAUX_RECENT_PATH, self->path) || exactMatch(FAUX_FAVOURITES_PATH, self->path) || is_collection; // not alphabetized
 	
 	Hash* map = NULL;
 	char map_path[256];
@@ -296,6 +296,7 @@ static void Directory_index(Directory* self) {
 
 static Array* getRoot(void);
 static Array* getRecents(void);
+static Array* getFavourites(void);
 static Array* getCollection(char* path);
 static Array* getDiscs(char* path);
 static Array* getEntries(char* path);
@@ -312,6 +313,9 @@ static Directory* Directory_new(char* path, int selected) {
 	}
 	else if (exactMatch(path, FAUX_RECENT_PATH)) {
 		self->entries = getRecents();
+	}
+	else if (exactMatch(path, FAUX_FAVOURITES_PATH)) {
+		self->entries = getFavourites();
 	}
 	else if (!exactMatch(path, COLLECTIONS_PATH) && prefixMatch(COLLECTIONS_PATH, path) && suffixMatch(".txt", path)) {
 		self->entries = getCollection(path);
@@ -395,6 +399,7 @@ static void RecentArray_free(Array* self) {
 static Directory* top;
 static Array* stack; // DirectoryArray
 static Array* recents; // RecentArray
+static Array* favourites; // FavouriteArray
 
 static int quit = 0;
 static int can_resume = 0;
@@ -488,6 +493,92 @@ static int hasM3u(char* rom_path, char* m3u_path) { // NOTE: rom_path not dir_pa
 	return exists(m3u_path);
 }
 
+static void saveFavourites(void) {
+	FILE* file = fopen(FAVOURITES_PATH, "w");
+	if (file) {
+		for (int i=0; i<favourites->count; i++) {
+			Recent* favourite = favourites->items[i];
+			fputs(favourite->path, file);
+			if (favourite->alias) {
+				fputs("\t", file);
+				fputs(favourite->alias, file);
+			}
+			putc('\n', file);
+		}
+		fclose(file);
+	}
+}
+
+// Comparison function for qsort
+static int compare_recent(const void *a, const void *b) {
+    // Cast pointers to pointers to Recent structs
+    const Recent *r1 = *(const Recent **)a;
+    const Recent *r2 = *(const Recent **)b;
+    
+    // Compare the alias fields alphabetically
+    return strcmp(r1->alias, r2->alias);
+}
+
+// Function to sort the favourites array by alias
+static void sort_favourites_by_alias(Array *arr) {
+    qsort(arr->items, arr->count, sizeof(void *), compare_recent);
+}
+
+static void addFavourite(Entry* entry) {
+	LOG_info("addFavourite %s\n", entry->name);
+
+	char sd_path[256];
+	strcpy(sd_path, entry->path);
+	
+	char m3u_path[256];
+	int has_m3u = hasM3u(sd_path, m3u_path);
+	
+	char favourites_path[256];
+	strcpy(favourites_path, has_m3u ? m3u_path : sd_path);
+
+	char* path = favourites_path;
+	path += strlen(SDCARD_PATH); // makes paths platform agnostic
+
+	int id = RecentArray_indexOf(favourites, path);
+	if (id==-1) { // add if it's not already a favourite
+		Array_push(favourites, Recent_new(path, entry->name));
+		sort_favourites_by_alias(favourites);
+		saveFavourites();
+	}
+}
+
+static void removeFavourite(Entry* entry) {
+	LOG_info("removeFavourite %s\n", entry->name);
+	
+	char sd_path[256];
+	strcpy(sd_path, entry->path);
+	
+	char m3u_path[256];
+	int has_m3u = hasM3u(sd_path, m3u_path);
+	
+	char favourites_path[256];
+	strcpy(favourites_path, has_m3u ? m3u_path : sd_path);
+
+	char* path = favourites_path;
+	path += strlen(SDCARD_PATH); // makes paths platform agnostic
+
+	int id = RecentArray_indexOf(favourites, path);
+  if (id < 0 || id >= favourites->count) {
+      return;
+  }
+  free(favourites->items[id]);
+  for (int i = id; i < favourites->count - 1; i++) {
+      favourites->items[i] = favourites->items[i + 1];
+  }
+  favourites->items[favourites->count - 1] = NULL;
+  favourites->count--;
+  saveFavourites();
+
+	top = Directory_new(top->path, 0);
+	top->start = 0;
+	top->end = (top->entries->count<MAIN_ROW_COUNT) ? top->entries->count : MAIN_ROW_COUNT;
+}
+
 static int hasRecents(void) {
 	LOG_info("hasRecents %s\n", RECENT_PATH);
 	int has = 0;
@@ -570,6 +661,86 @@ static int hasRecents(void) {
 	StringArray_free(parent_paths);
 	return has>0;
 }
+static int loadFavourites(void) {
+	LOG_info("loadFavourites %s\n", FAVOURITES_PATH);
+	int has = 0;
+	
+	Array* parent_paths = Array_new();
+	if (exists(CHANGE_DISC_PATH)) {
+		char sd_path[256];
+		getFile(CHANGE_DISC_PATH, sd_path, 256);
+		if (exists(sd_path)) {
+			char* disc_path = sd_path + strlen(SDCARD_PATH); // makes path platform agnostic
+			Recent* favourite = Recent_new(disc_path, NULL);
+			if (favourite->available) has += 1;
+			Array_push(favourites, favourite);
+		
+			char parent_path[256];
+			strcpy(parent_path, disc_path);
+			char* tmp = strrchr(parent_path, '/') + 1;
+			tmp[0] = '\0';
+			Array_push(parent_paths, strdup(parent_path));
+		}
+		unlink(CHANGE_DISC_PATH);
+	}
+	
+	FILE* file = fopen(FAVOURITES_PATH, "r"); // newest at top
+	if (file) {
+		char line[256];
+		while (fgets(line,256,file)!=NULL) {
+			normalizeNewline(line);
+			trimTrailingNewlines(line);
+			if (strlen(line)==0) continue; // skip empty lines
+			
+			// LOG_info("line: %s\n", line);
+			
+			char* path = line;
+			char* alias = NULL;
+			char* tmp = strchr(line,'\t');
+			if (tmp) {
+				tmp[0] = '\0';
+				alias = tmp+1;
+			}
+			
+			char sd_path[256];
+			sprintf(sd_path, "%s%s", SDCARD_PATH, path);
+			if (exists(sd_path)) {
+
+					// this logic replaces an existing disc from a multi-disc game with the last used
+					char m3u_path[256];
+					if (hasM3u(sd_path, m3u_path)) { // TODO: this might tank launch speed
+						char parent_path[256];
+						strcpy(parent_path, path);
+						char* tmp = strrchr(parent_path, '/') + 1;
+						tmp[0] = '\0';
+						
+						int found = 0;
+						for (int i=0; i<parent_paths->count; i++) {
+							char* path = parent_paths->items[i];
+							if (prefixMatch(path, parent_path)) {
+								found = 1;
+								break;
+							}
+						}
+						if (found) continue;
+						
+						Array_push(parent_paths, strdup(parent_path));
+					}
+					
+					// LOG_info("path:%s alias:%s\n", path, alias);
+					
+					Recent* favourite = Recent_new(path, alias);
+					if (favourite->available) has += 1;
+					Array_push(favourites, favourite);
+			}
+		}
+		fclose(file);
+	}
+	
+	
+	StringArray_free(parent_paths);
+	return has>0;
+}
 static int hasCollections(void) {
 	int has = 0;
 	if (!exists(COLLECTIONS_PATH)) return has;
@@ -613,6 +784,8 @@ static Array* getRoot(void) {
 	Array* root = Array_new();
 	
 	if (hasRecents()) Array_push(root, Entry_new(FAUX_RECENT_PATH, ENTRY_DIR));
+	loadFavourites();
+	Array_push(root, Entry_new(FAUX_FAVOURITES_PATH, ENTRY_DIR));
 	
 	Array* entries = Array_new();
 	DIR* dh = opendir(ROMS_PATH);
@@ -737,6 +910,24 @@ static Array* getRecents(void) {
 		if (recent->alias) {
 			free(entry->name);
 			entry->name = strdup(recent->alias);
+		}
+		Array_push(entries, entry);
+	}
+	return entries;
+}
+static Array* getFavourites(void) {
+	Array* entries = Array_new();
+	for (int i=0; i<favourites->count; i++) {
+		Recent* favourite = favourites->items[i];
+		if (!favourite->available) continue;
+		
+		char sd_path[256];
+		sprintf(sd_path, "%s%s", SDCARD_PATH, favourite->path);
+		int type = suffixMatch(".pak", sd_path) ? ENTRY_PAK : ENTRY_ROM; // ???
+		Entry* entry = Entry_new(sd_path, type);
+		if (favourite->alias) {
+			free(entry->name);
+			entry->name = strdup(favourite->alias);
 		}
 		Array_push(entries, entry);
 	}
@@ -1259,12 +1450,14 @@ static void loadLast(void) { // call after loading root directory
 static void Menu_init(void) {
 	stack = Array_new(); // array of open Directories
 	recents = Array_new();
+	favourites = Array_new();
 
 	openDirectory(SDCARD_PATH, 0);
 	loadLast(); // restore state when available
 }
 static void Menu_quit(void) {
 	RecentArray_free(recents);
+	RecentArray_free(favourites);
 	DirectoryArray_free(stack);
 }
 
@@ -1455,6 +1648,19 @@ int main (int argc, char *argv[]) {
 				dirty = 1;
 
 				if (total>0) readyResume(top->entries->items[top->selected]);
+			}
+			else if (stack->count>1 && PAD_justPressed(BTN_SELECT)) {
+				Entry* entry = top->entries->items[top->selected];
+				int isSpecial = strcmp(top->name, TOOLS_NAME) == 0 || 
+												strcmp(top->name, COLLECTIONS_NAME) == 0 ||
+												strcmp(top->name, RECENT_NAME) == 0;
+				if(strcmp(top->name, FAVOURITES_NAME) == 0) {
+					removeFavourite(entry);
+				} else if(entry->type==ENTRY_ROM && !isSpecial) {
+					addFavourite(entry);
+				}
+				total = top->entries->count;
+				dirty = 1;
 			}
 			else if (PAD_justPressed(BTN_B) && stack->count>1) {
 				closeDirectory();

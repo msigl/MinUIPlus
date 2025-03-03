@@ -13,6 +13,16 @@
 #include "api.h"
 #include "utils.h"
 
+#define FAVOURITES_PATH SHARED_USERDATA_PATH "/.minui/favourites.txt"
+#define FAUX_FAVOURITES_PATH SDCARD_PATH "/Favourites"
+#define BACKUP_RECENT_PATH SHARED_USERDATA_PATH "/.minui/recent.txt"
+#define BACKUP_FAUX_RECENT_PATH SDCARD_PATH "/Recently Played"
+
+#define FAVOURITES_NAME "Favourites"
+#define TOOLS_NAME "Tools"
+#define COLLECTIONS_NAME "Collections"
+#define RECENT_NAME "Recently Played"
+
 typedef struct Array {
   int count;
   int capacity;
