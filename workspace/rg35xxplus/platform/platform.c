@@ -410,6 +410,9 @@ SDL_Surface* PLAT_initVideo(void) {
 	char* model = getenv("RGXX_MODEL"); // TODO: use device?
 	is_cubexx = exactMatch("RGcubexx", model);
 	is_rg34xx = exactMatch("RG34xx", model);
+	if(!is_rg34xx) {
+		is_rg34xx = exactMatch("RG34xxSP", model);
+	}
 	
 	// SDL_version compiled;
 	// SDL_version linked;
