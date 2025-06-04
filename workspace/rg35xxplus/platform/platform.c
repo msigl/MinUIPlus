@@ -925,7 +925,7 @@ void PLAT_powerOff(void) {
 
 	SetRawVolume(MUTE_VOLUME_RAW);
 	PLAT_enableBacklight(0);
-	system("echo 1 > /sys/class/power_supply/axp2202-battery/work_led");
+	//system("echo 1 > /sys/class/power_supply/axp2202-battery/work_led");
 	SND_quit();
 	VIB_quit();
 	PWR_quit();
@@ -938,7 +938,10 @@ void PLAT_powerOff(void) {
 	// touch("/tmp/poweroff");
 	// sync();
 	// system("touch /tmp/poweroff && sync");
-	exit(0);
+
+
+	system("shutdown -h now");
+	//exit(0);
 }
 
 ///////////////////////////////

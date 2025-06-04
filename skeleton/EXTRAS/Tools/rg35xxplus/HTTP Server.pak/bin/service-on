@@ -1,0 +1,24 @@
+#!/bin/sh
+bindir="$(dirname "$0")"
+progdir="$(dirname "$bindir")"
+cd "$progdir" || exit 1
+[ -f "$progdir/debug" ] && set -x
+PAK_NAME="$(basename "$progdir")"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$progdir/lib"
+
+main() {
+    cd "$SDCARD_PATH" || return 1
+
+    port=""
+    if [ -f "$progdir/port" ]; then
+        port="$(cat "$progdir/port")"
+    fi
+    if [ -z "$port" ]; then
+        port=80
+    fi
+
+    chmod +x "$progdir/bin/dufs"
+    "$bindir/dufs" --allow-all --bind 0.0.0.0 --port "$port" --log-file "$LOGS_PATH/$PAK_NAME.service.txt" &
+}
+
+main "$@"

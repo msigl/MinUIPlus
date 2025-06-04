@@ -1,0 +1,5 @@
+{
+    "label": "Wifi",
+    "launch": "launch.sh",
+    "description": "Manage Wifi settings"
+}

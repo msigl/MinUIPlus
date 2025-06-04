@@ -1,0 +1,11 @@
+#!/bin/sh
+bindir="$(dirname "$0")"
+progdir="$(dirname "$bindir")"
+[ -f "$progdir/debug" ] && set -x
+PAK_NAME="$(basename "$progdir")"
+
+main() {
+    "$bindir/service-on" &
+}
+
+main "$@" >"$LOGS_PATH/$PAK_NAME.txt" 2>&1

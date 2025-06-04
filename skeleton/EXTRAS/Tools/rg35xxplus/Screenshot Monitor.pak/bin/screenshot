@@ -1,0 +1,31 @@
+#!/bin/sh
+
+get_screenshot_prefix() {
+    game_name="$(cat "$SDCARD_PATH/.userdata/shared/.minui/recent.txt" | head -n1 | cut -d$'\t' -f2)"
+    if [ -z "$game_name" ]; then
+        game_name="Screenshot"
+    fi
+
+    screenshot_prefix="Screenshot"
+    if pgrep "minarch.elf" >/dev/null 2>&1; then
+        screenshot_prefix="$game_name"
+    elif pgrep "mupen64plus" >/dev/null 2>&1; then
+        screenshot_prefix="$game_name"
+    elif pgrep "drastic" >/dev/null 2>&1; then
+        screenshot_prefix="$game_name"
+    elif pgrep "PPSSPPSDL" >/dev/null 2>&1; then
+        screenshot_prefix="$game_name"
+    fi
+
+    echo "$screenshot_prefix"
+}
+
+main() {
+    mkdir -p "$SDCARD_PATH/Screenshots/"
+    current_date="$(date +%Y-%m-%d-%H-%M-%S)"
+    screenshot_prefix="$(get_screenshot_prefix)"
+
+    /usr/trimui/bin/fbscreencap "$SDCARD_PATH/Screenshots/${screenshot_prefix}.${current_date}.png"
+}
+
+main "$@"
