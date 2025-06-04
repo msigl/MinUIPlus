@@ -2,7 +2,7 @@
 DIR="$(dirname "$0")"
 cd "$DIR"
 
-show.elf "$DIR/reboot.png"
+show.elf "$DIR/shutdown.png"
 
 rm -f /tmp/minui_exec && sync
-shutdown -r now
+shutdown -h now
